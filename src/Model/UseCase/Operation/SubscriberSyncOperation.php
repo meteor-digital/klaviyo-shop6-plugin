@@ -143,6 +143,22 @@ class SubscriberSyncOperation implements JobHandlerInterface
                             $listId
                         );
                     }
+
+                    // Sync the recipient language/locale onto the Klaviyo profiles. The list-subscribe
+                    // endpoints above do not accept custom "properties", so language is pushed separately
+                    // via the identify/profile-import endpoint. A failure here must not fail the sync.
+                    try {
+                        $this->klaviyoGateway->upsertSubscriberProfiles(
+                            $context,
+                            $channel->getId(),
+                            $subscribersCollection
+                        );
+                    } catch (\Throwable $e) {
+                        $result['warnings'][] = \sprintf(
+                            'Unable to sync subscriber language to Klaviyo: %s',
+                            $e->getMessage()
+                        );
+                    }
                 }
 
                 if (0 !== $unsubscribedRecipients->count()) {

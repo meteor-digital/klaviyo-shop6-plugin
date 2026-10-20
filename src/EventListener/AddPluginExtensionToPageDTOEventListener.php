@@ -214,7 +214,10 @@ class AddPluginExtensionToPageDTOEventListener implements EventSubscriberInterfa
             );
 
             if (null !== $subscriber) {
-                $customerIdentity = $this->newsletterSubscriberPropertiesTranslator->translateSubscriber($subscriber);
+                $customerIdentity = $this->newsletterSubscriberPropertiesTranslator->translateSubscriber(
+                    $channelContext->getContext(),
+                    $subscriber
+                );
             }
         }
 

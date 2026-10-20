@@ -7,6 +7,7 @@ namespace Klaviyo\Integration\Klaviyo\Gateway;
 use Klaviyo\Integration\Klaviyo\Client\ApiTransfer\Message\ExcludedSubscribers\GetExcludedSubscribers;
 use Klaviyo\Integration\Klaviyo\Client\ApiTransfer\Message\Profiles\AddMembersToList\AddProfilesToListResponse;
 use Klaviyo\Integration\Klaviyo\Client\ApiTransfer\Message\Profiles\Common\ProfileContactInfoCollection;
+use Klaviyo\Integration\Klaviyo\Client\ApiTransfer\Message\Profiles\Identify\IdentifyProfileRequest;
 use Klaviyo\Integration\Klaviyo\Client\ApiTransfer\Message\Profiles\RemoveProfilesFromList\RemoveProfilesFromListRequest;
 use Klaviyo\Integration\Klaviyo\Client\ApiTransfer\Message\Profiles\RemoveProfilesFromList\RemoveProfilesFromListResponse;
 use Klaviyo\Integration\Klaviyo\Client\ApiTransfer\Message\Profiles\SubscribeCustomersToList\SubscribeToListResponse;
@@ -19,6 +20,7 @@ use Klaviyo\Integration\Klaviyo\Gateway\Exception\TranslationException;
 use Klaviyo\Integration\Klaviyo\Gateway\Result\OrderTrackingResult;
 use Klaviyo\Integration\Klaviyo\Gateway\Translator\CartEventRequestTranslator;
 use Klaviyo\Integration\Klaviyo\Gateway\Translator\IdentifyProfileRequestTranslator;
+use Klaviyo\Integration\Klaviyo\Gateway\Translator\NewsletterSubscriberPropertiesTranslator;
 use Klaviyo\Integration\Klaviyo\Gateway\Translator\OrderEventRequestTranslator;
 use Klaviyo\Integration\Klaviyo\Gateway\Translator\ProductEventRequestTranslator;
 use Klaviyo\Integration\Klaviyo\Gateway\Translator\RealSubscribersToKlaviyoRequestsTranslator;
@@ -45,6 +47,7 @@ class KlaviyoGateway
     private UpdateProfileRequestTranslator $updateProfileRequestTranslator;
     private LoggerInterface $logger;
     private RealSubscribersToKlaviyoRequestsTranslator $realSubscribersTranslator;
+    private NewsletterSubscriberPropertiesTranslator $newsletterSubscriberPropertiesTranslator;
 
     public function __construct(
         ClientRegistry $clientRegistry,
@@ -56,7 +59,8 @@ class KlaviyoGateway
         SearchStrategyInterface $profileIdSearchStrategy,
         UpdateProfileRequestTranslator $updateProfileRequestTranslator,
         LoggerInterface $logger,
-        RealSubscribersToKlaviyoRequestsTranslator $realSubscribersTranslator
+        RealSubscribersToKlaviyoRequestsTranslator $realSubscribersTranslator,
+        NewsletterSubscriberPropertiesTranslator $newsletterSubscriberPropertiesTranslator
     ) {
         $this->clientRegistry = $clientRegistry;
         $this->orderEventRequestTranslator = $placedOrderEventRequestTranslator;
@@ -68,6 +72,7 @@ class KlaviyoGateway
         $this->updateProfileRequestTranslator = $updateProfileRequestTranslator;
         $this->logger = $logger;
         $this->realSubscribersTranslator = $realSubscribersTranslator;
+        $this->newsletterSubscriberPropertiesTranslator = $newsletterSubscriberPropertiesTranslator;
     }
 
     public function trackPlacedOrders(Context $context, string $channelId, array $orderEvents): OrderTrackingResult
@@ -169,6 +174,26 @@ class KlaviyoGateway
         /* Update/create customer profiles */
         foreach ($customers as $customer) {
             $createRequests[] = $this->identifyProfileRequestTranslator->translateToProfileRequest($context, $customer);
+        }
+
+        return $this->trackEvents($channelId, $createRequests);
+    }
+
+    /**
+     * Upserts newsletter recipient profiles via the identify/profile-import endpoint, which (unlike the
+     * list-subscribe endpoint) accepts custom "properties" such as the recipient's language/locale.
+     */
+    public function upsertSubscriberProfiles(
+        Context $context,
+        string $channelId,
+        NewsletterRecipientCollection $recipientCollection
+    ): ClientResult {
+        $createRequests = [];
+
+        foreach ($recipientCollection as $recipient) {
+            $customerProperties = $this->newsletterSubscriberPropertiesTranslator
+                ->translateSubscriber($context, $recipient);
+            $createRequests[] = new IdentifyProfileRequest($customerProperties);
         }
 
         return $this->trackEvents($channelId, $createRequests);
